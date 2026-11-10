@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -55,3 +58,12 @@ jobs:
           name: UnderdogWoof-windows
           path: pkg
           retention-days: 1
+
+      - name: Publish permanent release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Compress-Archive -Path pkg\* -DestinationPath UnderdogWoof-windows.zip
+          $tag = "v1.0.$env:GITHUB_RUN_NUMBER"
+          $notes = "Offline Windows EXE of Underdog Woof TTS (ConwayResearch). Unzip and double-click UnderdogWoof.exe. Model under the Underdog Non-Commercial License 1.0 - see LICENSE/NOTICE in the zip. Personal, research, teaching and non-profit use only."
+          gh release create $tag UnderdogWoof-windows.zip dist\UnderdogWoof.exe --title "Underdog Woof for Windows $tag" --notes $notes --latest
