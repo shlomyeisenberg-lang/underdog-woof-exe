@@ -1,0 +1,57 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: python -m pip install --upgrade pip numpy pyinstaller huggingface_hub
+
+      - name: Download model from Hugging Face
+        run: |
+          hf download ConwayResearch/Underdog-Woof --local-dir underdog-woof
+          Remove-Item -Recurse -Force underdog-woof\.cache -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force underdog-woof\assets -ErrorAction SilentlyContinue
+          Get-ChildItem -Recurse underdog-woof | Select-Object FullName, Length | Format-Table -AutoSize
+
+      - name: Smoke-test the plain Python runtime
+        working-directory: underdog-woof
+        run: python -m underdog_woof "Testing one two three." -o ..\py_test.wav
+
+      - name: Build single-file EXE
+        run: |
+          pyinstaller --noconfirm --onefile --windowed --name UnderdogWoof `
+            --paths underdog-woof `
+            --collect-submodules underdog_woof `
+            --add-data "underdog-woof;." `
+            woof_app.py
+
+      - name: Test the EXE (offline CLI mode)
+        run: |
+          $p = Start-Process -FilePath dist\UnderdogWoof.exe -ArgumentList '--text "Your order ships on March 3rd, and costs $24.99." --out exe_test.wav --voice mira' -Wait -PassThru
+          if (Test-Path exe_test.wav.error.txt) { Get-Content exe_test.wav.error.txt }
+          if (-not (Test-Path exe_test.wav)) { throw "EXE did not produce audio (exit $($p.ExitCode))" }
+          Get-Item exe_test.wav, dist\UnderdogWoof.exe | Select-Object Name, Length
+
+      - name: Package
+        run: |
+          New-Item -ItemType Directory pkg | Out-Null
+          Copy-Item dist\UnderdogWoof.exe, README.md, exe_test.wav pkg\
+          Copy-Item underdog-woof\LICENSE, underdog-woof\NOTICE pkg\ -ErrorAction SilentlyContinue
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UnderdogWoof-windows
+          path: pkg
+          retention-days: 1
